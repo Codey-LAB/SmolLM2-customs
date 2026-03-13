@@ -10,6 +10,7 @@ short_description: SmolLM2-360M OpenAI-compatible API with ADI routing
 ---
 
 # SmolLM2 Service
+##### only a stupid LLM assi for the hub runs on 2 CPUs for free :D
 
 OpenAI-compatible LLM API powered by `SmolLM2-360M-Instruct` with integrated ADI (Anti-Dump Index) routing.
 
@@ -28,7 +29,7 @@ active        = "true"
 base_url      = "https://codey-lab-smollm-service.hf.space/v1"
 env_key       = "TEST_TOKEN"
 default_model = "smollm2-360m"
-fallback_to   = "anthropic"
+fallback_to   = "gemini"
 [LLM_PROVIDER.smollm_END]
 ```
 
@@ -60,5 +61,5 @@ python train.py --mode finetune  # finetune (coming soon)
 
 ## Architecture
 
-Part of [Universal MCP Hub](https://github.com/VolkanSah/Multi-LLM-API-Gateway) ecosystem.
-ADI: [Anti-Dump-Index](https://github.com/VolkanSah/Anti-Dump-Index)
+Part of [LLM-API-Gateway](https://github.com/VolkanSah/Multi-LLM-API-Gateway) ecosystem.
+ADI idea: [Anti-Dump-Index](https://github.com/VolkanSah/Anti-Dump-Index)
