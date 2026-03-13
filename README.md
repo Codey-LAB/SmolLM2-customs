@@ -58,7 +58,7 @@ POST /v1/chat/completions    → OpenAI-compatible inference
 
 ## Plug into any Hub (one config block)
 
-Works out of the box with [Multi-LLM-API-Gateway](https://github.com/VolkanSah/Multi-LLM-API-Gateway):
+Works out of the box with [Multi-LLM-API-Gateway](https://github.com/VolkanSah/Multi-LLM-API-Gateway): Hub Screenshot for this [SmolLM2](SmolLM2.jpg)
 
 ```ini
 [LLM_PROVIDER.smollm]
@@ -72,6 +72,7 @@ fallback_to   = "gemini"
 ```
 
 Any OpenAI-compatible client works the same way.
+
 
 ---
 
