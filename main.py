@@ -5,21 +5,16 @@
 # Copyright 2026 - Volkan Kücükbudak
 # Apache License V2 + ESOL 1.1
 # =============================================================================
-# Hub connects via:
-#   base_url = "https://codey-lab-smollm-service.hf.space/v1"
-#   → POST /v1/chat/completions  (OpenAI-compatible)
-#   → GET  /v1/health            (status check)
-# =============================================================================
 
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from typing import List, Optional
+
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
 
 import smollm
 import model as model_module
@@ -34,13 +29,28 @@ logger = logging.getLogger("main")
 # ── ADI ───────────────────────────────────────────────────────────────────────
 adi_analyzer = DumpindexAnalyzer(enable_logging=False)
 
+# ── API Key Auth ──────────────────────────────────────────────────────────────
+_API_KEY = os.environ.get("SMOLLM_API_KEY", "")
+if not _API_KEY:
+    logger.warning("API_KEY not set — running in open access mode!")
+else:
+    logger.info("API_KEY set — endpoint is protected")
+
+def _check_auth(authorization: Optional[str]) -> None:
+    """Validate Bearer token. Skipped if API_KEY secret not set (dev mode)."""
+    if not _API_KEY:
+        return
+    if authorization != f"Bearer {_API_KEY}":
+        logger.warning("Unauthorized request — invalid or missing token")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== SmolLM2 Service starting ===")
     logger.info(f"Model config: {model_module.status()}")
-    smollm.load()  # preload model on startup
+    smollm.load()
     yield
     logger.info("=== SmolLM2 Service stopped ===")
 
@@ -56,19 +66,11 @@ class Message(BaseModel):
     content: str
 
 class ChatCompletionRequest(BaseModel):
-    model:       Optional[str] = "smollm2-360m"
+    model:       Optional[str]   = "smollm2-360m"
     messages:    List[Message]
-    max_tokens:  Optional[int] = 150
+    max_tokens:  Optional[int]   = 150
     temperature: Optional[float] = 0.2
-    stream:      Optional[bool] = False
-
-class ChatCompletionResponse(BaseModel):
-    id:      str
-    object:  str = "chat.completion"
-    created: int
-    model:   str
-    choices: List[dict]
-    adi:     Optional[dict] = None  # ADI result attached to response
+    stream:      Optional[bool]  = False
 
 
 # =============================================================================
@@ -81,21 +83,29 @@ async def root():
         "service": "SmolLM2 Service",
         "model":   smollm.device_info(),
         "ready":   smollm.is_ready(),
+        "auth":    "protected" if _API_KEY else "open",
         "docs":    "/docs",
     }
 
 
 @app.get("/v1/health")
-async def health():
+async def health(authorization: Optional[str] = Header(None)):
+    _check_auth(authorization)
     return {
-        "status":  "ok" if smollm.is_ready() else "loading",
-        "device":  smollm.device_info(),
-        "model":   model_module.status(),
+        "status": "ok" if smollm.is_ready() else "loading",
+        "device": smollm.device_info(),
+        "model":  model_module.status(),
+        "auth":   "protected" if _API_KEY else "open",
     }
 
 
 @app.post("/v1/chat/completions")
-async def chat_completions(req: ChatCompletionRequest):
+async def chat_completions(
+    req: ChatCompletionRequest,
+    authorization: Optional[str] = Header(None),
+):
+    _check_auth(authorization)
+
     if not req.messages:
         raise HTTPException(status_code=400, detail="messages cannot be empty")
 
@@ -124,7 +134,6 @@ async def chat_completions(req: ChatCompletionRequest):
             "Your request needs more detail before I can help. "
             "Suggestions: " + " | ".join(adi_result["recommendations"])
         )
-        # Log to dataset
         model_module.push_log({
             "prompt":        user_prompt,
             "system_prompt": system_prompt,
@@ -150,7 +159,6 @@ async def chat_completions(req: ChatCompletionRequest):
 
     except Exception as e:
         logger.warning(f"SmolLM2 failed: {type(e).__name__} — triggering hub fallback")
-        # Return 503 so hub's fallback chain kicks in
         raise HTTPException(
             status_code=503,
             detail={
