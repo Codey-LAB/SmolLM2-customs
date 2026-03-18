@@ -239,6 +239,7 @@ The database is heavier than the model. SmolLM2-360M fits in 2GB. That's the poi
 | `model.py` | HF token resolution, dataset + model repo access |
 | `adi.py` | Request quality scoring (input + output) |
 | `train.py` | Dataset export, ADI validation, TRL SFTTrainer finetuning |
+train_local.sh not ready
 
 ---
 
