@@ -8,7 +8,7 @@
 # Usage:
 #   python train.py --mode export   → export HF dataset to training format
 #   python train.py --mode validate → validate ADI weights against dataset
-#   python train.py --mode finetune → finetune SmolLM2 on collected data (future)
+#   python train.py --mode finetune → finetune SmolLM2 on exported data
 # =============================================================================
 import os
 import argparse
@@ -24,6 +24,7 @@ _TMP = Path("/tmp") if os.getenv("SPACE_ID") else Path(".")
 
 TRAIN_DATA   = _TMP / "train_data.jsonl"
 VALID_RESULT = _TMP / "validation_results.json"
+MODEL_OUTPUT = _TMP / "finetuned_model"
 
 import model as model_module
 from adi import DumpindexAnalyzer
@@ -39,7 +40,9 @@ logger = logging.getLogger("train")
 def export_dataset(output_path: str = None):
     """
     Export HF dataset logs to JSONL format for training.
-    Filters: only HIGH_PRIORITY and MEDIUM_PRIORITY entries with actual responses.
+    Includes HIGH_PRIORITY, MEDIUM_PRIORITY and BLOCKED entries.
+    BLOCKED entries teach the model what to reject.
+    REJECT entries (ADI noise/quality fail) are skipped — no response logged.
     """
     output = Path(output_path) if output_path else TRAIN_DATA
 
@@ -51,26 +54,31 @@ def export_dataset(output_path: str = None):
         return
 
     count = 0
+    skipped = 0
     with open(output, "w") as f:
         for entry in entries:
-            # Only export entries where SmolLM2 actually responded
+            # Skip ADI-rejected entries — no meaningful response logged
             if entry.get("adi_decision") == "REJECT":
+                skipped += 1
                 continue
             if not entry.get("response"):
+                skipped += 1
                 continue
 
             # Format as instruction tuning pair
+            # BLOCKED entries are included — model learns what to refuse
             record = {
-                "instruction": entry.get("system_prompt", "You are a helpful assistant."),
-                "input":       entry.get("prompt", ""),
-                "output":      entry.get("response", ""),
-                "adi_score":   entry.get("adi_score"),
+                "instruction":  entry.get("system_prompt", "You are a helpful assistant."),
+                "input":        entry.get("prompt", ""),
+                "output":       entry.get("response", ""),
+                "adi_score":    entry.get("adi_score"),
                 "adi_decision": entry.get("adi_decision"),
+                "is_safe":      entry.get("adi_decision") != "BLOCKED",
             }
             f.write(json.dumps(record) + "\n")
             count += 1
 
-    logger.info(f"Exported {count}/{len(entries)} entries → {output}")
+    logger.info(f"Exported {count}/{len(entries)} entries → {output} (skipped: {skipped})")
 
 
 # =============================================================================
@@ -107,13 +115,14 @@ def validate_adi():
 
 
 # =============================================================================
-# Mode 3 — Finetune placeholder
+# Mode 3 — Finetune SmolLM2 with TRL SFTTrainer
 # =============================================================================
 
 def finetune():
     """
-    Finetune SmolLM2 on collected dataset.
-    Requires export first + enough data (>500 samples recommended).
+    Finetune SmolLM2 on exported dataset using TRL SFTTrainer.
+    Requires export first + enough data (500+ samples recommended).
+    On completion: pushes finetuned weights to private HF model repo.
     """
     if not TRAIN_DATA.exists():
         logger.error(f"train_data.jsonl not found at {TRAIN_DATA} — run export first")
@@ -122,17 +131,115 @@ def finetune():
     lines = TRAIN_DATA.read_text().strip().splitlines()
     logger.info(f"Training samples available: {len(lines)}")
 
-    if len(lines) < 100:
+    if len(lines) < 10:
+        logger.error(f"Too few samples ({len(lines)}) — aborting finetune")
+        return
+
+    if len(lines) < 500:
         logger.warning(f"Only {len(lines)} samples — recommend 500+ for meaningful finetuning")
 
-    # TODO: implement finetuning with transformers Trainer
-    # Rough plan:
-    #   1. Load base model via model.get_model_id()
-    #   2. Tokenize TRAIN_DATA
-    #   3. TrainingArguments + Trainer (or TRL SFTTrainer)
-    #   4. Save to PRIVATE_MODEL repo via model.push_model_card()
-    logger.info("Finetune placeholder — not yet implemented")
-    logger.info("Next step: implement with transformers.Trainer or TRL SFTTrainer")
+    # ── Imports ───────────────────────────────────────────────────────────────
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from trl import SFTTrainer, SFTConfig
+        from datasets import Dataset
+        import torch
+    except ImportError as e:
+        logger.error(f"Missing dependency: {e} — run: pip install trl transformers datasets torch")
+        return
+
+    # ── Load dataset ──────────────────────────────────────────────────────────
+    logger.info("Loading training data...")
+    records = [json.loads(l) for l in lines]
+
+    def format_record(record):
+        """Format record into chat template string."""
+        instruction = record.get("instruction", "You are a helpful assistant.")
+        user_input  = record.get("input", "")
+        output      = record.get("output", "")
+        return {
+            "text": f"<|system|>\n{instruction}\n<|user|>\n{user_input}\n<|assistant|>\n{output}"
+        }
+
+    formatted = [format_record(r) for r in records]
+    dataset   = Dataset.from_list(formatted)
+    logger.info(f"Dataset ready: {len(dataset)} samples")
+
+    # ── Load model + tokenizer ────────────────────────────────────────────────
+    model_id = model_module.get_model_id()
+    kwargs   = model_module.get_model_kwargs()
+    device   = "cuda" if torch.cuda.is_available() else "cpu"
+
+    logger.info(f"Loading base model: {model_id} on {device}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_id, **kwargs)
+    model     = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
+
+    # Ensure pad token exists
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # ── Training config ───────────────────────────────────────────────────────
+    # Conservative settings for CPU / low RAM (2-8GB)
+    sft_config = SFTConfig(
+        output_dir=str(MODEL_OUTPUT),
+        num_train_epochs=3,
+        per_device_train_batch_size=1,      # CPU friendly
+        gradient_accumulation_steps=4,      # effective batch size = 4
+        learning_rate=2e-5,
+        warmup_steps=10,
+        logging_steps=10,
+        save_steps=50,
+        save_total_limit=2,
+        fp16=False,                         # no GPU, no fp16
+        bf16=False,
+        dataloader_num_workers=0,           # HF Spaces: no multiprocessing
+        report_to="none",                   # no wandb/tensorboard
+        max_seq_length=512,                 # SmolLM2 context limit
+        dataset_text_field="text",
+    )
+
+    # ── SFTTrainer ────────────────────────────────────────────────────────────
+    logger.info("Initializing SFTTrainer...")
+    trainer = SFTTrainer(
+        model=model,
+        args=sft_config,
+        train_dataset=dataset,
+        #tokenizer=tokenizer,
+    )
+
+    # ── Train ─────────────────────────────────────────────────────────────────
+    logger.info("Starting finetuning...")
+    start = datetime.utcnow()
+    trainer.train()
+    duration = (datetime.utcnow() - start).total_seconds()
+    logger.info(f"Training complete in {duration:.0f}s")
+
+    # ── Save locally ──────────────────────────────────────────────────────────
+    trainer.save_model(str(MODEL_OUTPUT))
+    tokenizer.save_pretrained(str(MODEL_OUTPUT))
+    logger.info(f"Model saved → {MODEL_OUTPUT}")
+
+    # ── Push to HF private repo ───────────────────────────────────────────────
+    token        = model_module.TOKEN
+    private_repo = model_module.PRIVATE_MODEL
+
+    if token and private_repo:
+        logger.info(f"Pushing to HF: {private_repo}...")
+        try:
+            model.push_to_hub(private_repo, token=token, private=True)
+            tokenizer.push_to_hub(private_repo, token=token, private=True)
+            model_module.push_model_card({
+                "model_id":       model_id,
+                "samples":        len(dataset),
+                "epochs":         3,
+                "duration_sec":   int(duration),
+                "finetuned_from": model_id,
+            })
+            logger.info(f"Model pushed → {private_repo}")
+        except Exception as e:
+            logger.error(f"Push failed: {type(e).__name__}: {e}")
+    else:
+        logger.warning("No token or private repo configured — skipping HF push")
 
 
 # =============================================================================
