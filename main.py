@@ -5,6 +5,16 @@
 # Copyright 2026 - Volkan Kücükbudak
 # Apache License V2 + ESOL 1.1
 # =============================================================================
+# Hub connects via:
+#   base_url = "https://codey-lab-smollm2-customs.hf.space/v1"
+#   → POST /v1/chat/completions  (OpenAI-compatible)
+#   → GET  /v1/health            (status check)
+#
+# AUTH:
+#   Set API_KEY in HF Space Secrets to lock down the endpoint.
+#   Hub sends it as:  Authorization: Bearer <API_KEY>
+#   If API_KEY not set → open access (dev mode, log warning)
+# =============================================================================
 
 import logging
 import os
@@ -98,6 +108,60 @@ async def health(authorization: Optional[str] = Header(None)):
         "auth":   "protected" if _API_KEY else "open",
     }
 
+# ── Training & Data Ops Trigger ──────────────────────────────────────────────
+# How to trigger Training/Export/Validation outside HF (e.g., Git Actions):
+#
+# # 1. Export Dataset to JSONL:
+# curl -X POST "https://codey-lab-smollm2-customs.hf.space/v1/train/execute?mode=export" \
+#      -H "Authorization: Bearer ${{ secrets.SMOLLM_API_KEY }}"
+#
+# # 2. Validate ADI Weights:
+# curl -X POST "https://codey-lab-smollm2-customs.hf.space/v1/train/execute?mode=validate" \
+#      -H "Authorization: Bearer ${{ secrets.SMOLLM_API_KEY }}"
+#
+# # 3. Finetune SmolLM2:
+# curl -X POST "https://codey-lab-smollm2-customs.hf.space/v1/train/execute?mode=finetune" \
+#      -H "Authorization: Bearer ${{ secrets.SMOLLM_API_KEY }}"
+
+@app.post("/v1/train/execute")
+async def execute_train_ops(
+    mode: str = "export", 
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Remote Trigger for train.py execution. 
+    Supports: export (JSONL dump), validate (ADI accuracy check), finetune (Training).
+    """
+    _check_auth(authorization)
+    
+    import subprocess
+    import sys
+
+    # Map the allowed modes from your train.py
+    valid_modes = ["export", "validate", "finetune"]
+    if mode not in valid_modes:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid mode. Supported: {', '.join(valid_modes)}"
+        )
+
+    try:
+        # We use Popen for a nonblocking background proces 
+        # so the API call returns immediately without timing out.
+        subprocess.Popen([sys.executable, "train.py", "--mode", mode])
+        
+        logger.info(f"TRAIN-OPS | Background task started: train.py --mode {mode}")
+        return {
+            "status": "queued",
+            "mode": mode,
+            "message": f"Task 'train.py --mode {mode}' triggered successfully.",
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        logger.error(f"TRAIN-OPS Failed to trigger: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal Execution Error")
+
+# ── chat/completions ──────────────────────────────────────────────────────────
 
 @app.post("/v1/chat/completions")
 async def chat_completions(
