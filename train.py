@@ -10,12 +10,20 @@
 #   python train.py --mode validate → validate ADI weights against dataset
 #   python train.py --mode finetune → finetune SmolLM2 on collected data (future)
 # =============================================================================
-
+import os
 import argparse
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
+
+# ── Path Resolution ───────────────────────────────────────────────────────────
+# HF Spaces: /tmp/ (read-only filesystem)
+# Local dev: current directory
+_TMP = Path("/tmp") if os.getenv("SPACE_ID") else Path(".")
+
+TRAIN_DATA   = _TMP / "train_data.jsonl"
+VALID_RESULT = _TMP / "validation_results.json"
 
 import model as model_module
 from adi import DumpindexAnalyzer
@@ -28,7 +36,8 @@ logger = logging.getLogger("train")
 # Mode 1 — Export dataset to training format
 # =============================================================================
 
-def export_dataset(output_path: str = "train_data.jsonl"):
+def export_dataset(output_path: str = None):
+    output = Path(output_path) if output_path else TRAIN_DATA
     """
     Export HF dataset logs to JSONL format for training.
     Filters: only HIGH_PRIORITY and MEDIUM_PRIORITY entries with actual responses.
@@ -95,7 +104,7 @@ def validate_adi():
         "samples": len(labeled),
         "weights": analyzer.weights,
     }
-    Path("validation_results.json").write_text(json.dumps(result, indent=2))
+    VALID_RESULT.write_text(json.dumps(result, indent=2))
     logger.info("Results saved → validation_results.json")
 
 
@@ -104,16 +113,10 @@ def validate_adi():
 # =============================================================================
 
 def finetune():
-    """
-    Finetune SmolLM2 on collected dataset.
-    Placeholder — requires export first + enough data (>500 samples recommended).
-    """
-    train_file = Path("train_data.jsonl")
-    if not train_file.exists():
-        logger.error("train_data.jsonl not found — run: python train.py --mode export first")
+    if not TRAIN_DATA.exists():
+        logger.error(f"train_data.jsonl not found at {TRAIN_DATA}")
         return
-
-    lines = train_file.read_text().strip().splitlines()
+    lines = TRAIN_DATA.read_text().strip().splitlines()
     logger.info(f"Training samples available: {len(lines)}")
 
     if len(lines) < 100:
