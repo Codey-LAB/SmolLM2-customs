@@ -49,6 +49,12 @@ def export_dataset(output_path: str = None):
     logger.info("Loading dataset from HF...")
     entries = model_module.load_logs()
 
+    # ── DEBUG: remove after fix ───────────────────────────────────────────
+    #if entries:
+        #logger.info(f"Keys: {list(entries[0].keys())}")
+        #logger.info(f"Sample: {entries[0]}")
+    # ─────────────────────────────────────────────────────────────────────
+
     if not entries:
         logger.warning("Dataset empty — nothing to export")
         return
