@@ -10,12 +10,20 @@
 #   python train.py --mode validate → validate ADI weights against dataset
 #   python train.py --mode finetune → finetune SmolLM2 on collected data (future)
 # =============================================================================
-
+import os
 import argparse
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
+
+# ── Path Resolution ───────────────────────────────────────────────────────────
+# HF Spaces: /tmp/ (read-only filesystem)
+# Local dev: current directory
+_TMP = Path("/tmp") if os.getenv("SPACE_ID") else Path(".")
+
+TRAIN_DATA   = _TMP / "train_data.jsonl"
+VALID_RESULT = _TMP / "validation_results.json"
 
 import model as model_module
 from adi import DumpindexAnalyzer
@@ -28,11 +36,13 @@ logger = logging.getLogger("train")
 # Mode 1 — Export dataset to training format
 # =============================================================================
 
-def export_dataset(output_path: str = "train_data.jsonl"):
+def export_dataset(output_path: str = None):
     """
     Export HF dataset logs to JSONL format for training.
     Filters: only HIGH_PRIORITY and MEDIUM_PRIORITY entries with actual responses.
     """
+    output = Path(output_path) if output_path else TRAIN_DATA
+
     logger.info("Loading dataset from HF...")
     entries = model_module.load_logs()
 
@@ -40,9 +50,7 @@ def export_dataset(output_path: str = "train_data.jsonl"):
         logger.warning("Dataset empty — nothing to export")
         return
 
-    output = Path(output_path)
     count = 0
-
     with open(output, "w") as f:
         for entry in entries:
             # Only export entries where SmolLM2 actually responded
@@ -88,15 +96,14 @@ def validate_adi():
     accuracy = analyzer.validate_weights(labeled)
     logger.info(f"ADI Validation accuracy: {accuracy:.1%} on {len(labeled)} samples")
 
-    # Save results
     result = {
         "timestamp": datetime.utcnow().isoformat(),
-        "accuracy": accuracy,
-        "samples": len(labeled),
-        "weights": analyzer.weights,
+        "accuracy":  accuracy,
+        "samples":   len(labeled),
+        "weights":   analyzer.weights,
     }
-    Path("validation_results.json").write_text(json.dumps(result, indent=2))
-    logger.info("Results saved → validation_results.json")
+    VALID_RESULT.write_text(json.dumps(result, indent=2))
+    logger.info(f"Results saved → {VALID_RESULT}")
 
 
 # =============================================================================
@@ -106,14 +113,13 @@ def validate_adi():
 def finetune():
     """
     Finetune SmolLM2 on collected dataset.
-    Placeholder — requires export first + enough data (>500 samples recommended).
+    Requires export first + enough data (>500 samples recommended).
     """
-    train_file = Path("train_data.jsonl")
-    if not train_file.exists():
-        logger.error("train_data.jsonl not found — run: python train.py --mode export first")
+    if not TRAIN_DATA.exists():
+        logger.error(f"train_data.jsonl not found at {TRAIN_DATA} — run export first")
         return
 
-    lines = train_file.read_text().strip().splitlines()
+    lines = TRAIN_DATA.read_text().strip().splitlines()
     logger.info(f"Training samples available: {len(lines)}")
 
     if len(lines) < 100:
@@ -122,8 +128,8 @@ def finetune():
     # TODO: implement finetuning with transformers Trainer
     # Rough plan:
     #   1. Load base model via model.get_model_id()
-    #   2. Tokenize train_data.jsonl
-    #   3. TrainingArguments + Trainer
+    #   2. Tokenize TRAIN_DATA
+    #   3. TrainingArguments + Trainer (or TRL SFTTrainer)
     #   4. Save to PRIVATE_MODEL repo via model.push_model_card()
     logger.info("Finetune placeholder — not yet implemented")
     logger.info("Next step: implement with transformers.Trainer or TRL SFTTrainer")
@@ -141,7 +147,7 @@ if __name__ == "__main__":
         required=True,
         help="export: dump dataset to JSONL | validate: test ADI weights | finetune: train model"
     )
-    parser.add_argument("--output", default="train_data.jsonl", help="Output file for export mode")
+    parser.add_argument("--output", default=None, help="Output file for export mode (default: auto)")
     args = parser.parse_args()
 
     if args.mode == "export":
