@@ -1,0 +1,45 @@
+==== Application Startup at 2026-03-19 09:57:34 =====
+
+2026-03-19 09:58:36,438 [INFO] main: API_KEY set — endpoint is protected
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+2026-03-19 09:58:36,445 [INFO] main: === SmolLM2 Service starting ===
+2026-03-19 09:58:36,481 [INFO] model: HF API authenticated
+2026-03-19 09:58:36,481 [INFO] main: Model config: {'token': 'set', 'model_repo': 'HuggingFaceTB/SmolLM2-360M-Instruct', 'private_model': 'codey-lab/model.universal-mcp-hub', 'dataset_repo': 'codey-lab/data.universal-mcp-hub', 'hf_api': 'authenticated'}
+2026-03-19 09:58:36,916 [INFO] model: Using private model: codey-lab/model.universal-mcp-hub
+2026-03-19 09:58:36,918 [INFO] smollm: Loading codey-lab/model.universal-mcp-hub on cpu...
+2026-03-19 09:59:03,342 [INFO] smollm: Model ready [cpu]
+2026-03-19 09:59:04,056 [INFO] model: Model card updated: codey-lab/model.universal-mcp-hub
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:7860 (Press CTRL+C to quit)
+The token has not been saved to the git credentials helper. Pass `add_to_git_credential=True` in this function directly or `--add-to-git-credential` if using via `huggingface-cli` if you want to set the git credential as well.
+Token is valid (permission: fineGrained).
+Your token has been saved to /root/.cache/huggingface/token
+Login successful
+INFO:     10.20.26.157:14017 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE0MzY4LCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDA3NjgsImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.gpJliiNhF12nO-MnGVRNU9FQCbxCqrr24IcELM1gXpmNk2HRwfqfQ-fabMYI8iw4Qx1s1PYodTA1uCiqhageDw HTTP/1.1" 200 OK
+INFO:     10.20.5.43:4468 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE0MzY4LCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDA3NjgsImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.gpJliiNhF12nO-MnGVRNU9FQCbxCqrr24IcELM1gXpmNk2HRwfqfQ-fabMYI8iw4Qx1s1PYodTA1uCiqhageDw HTTP/1.1" 200 OK
+2026-03-19 09:59:48,469 [INFO] main: ADI | decision: HIGH_PRIORITY | score: -90.0
+The attention mask is not set and cannot be inferred from input because pad token is same as eos token. As a consequence, you may observe unexpected behavior. Please pass your input's `attention_mask` to obtain reliable results.
+2026-03-19 09:59:50,267 [INFO] main: SmolLM2 response ok | decision: HIGH_PRIORITY
+Generating train split: 0 examples [00:00, ? examples/s]
+Generating train split: 139 examples [00:00, 23899.66 examples/s]
+Uploading the dataset shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Creating parquet from Arrow format:   0%|          | 0/1 [00:00<?, ?ba/s]
+Creating parquet from Arrow format: 100%|██████████| 1/1 [00:00<00:00, 416.85ba/s]
+Uploading the dataset shards: 100%|██████████| 1/1 [00:00<00:00,  4.07it/s]
+Uploading the dataset shards: 100%|██████████| 1/1 [00:00<00:00,  4.07it/s]
+2026-03-19 09:59:51,995 [INFO] model: Dataset updated — total entries: 140
+INFO:     10.16.43.195:43173 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+INFO:     10.20.37.114:34545 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE1NzQ5LCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDIxNDksImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.VQmNDSbp1n-C33fwK7U0S_quL83cO81zFwY1h_NJ7d29GbnUi5wa57-3U8l5VrWtnFKPCntuVDqISFKoKhn7CQ HTTP/1.1" 200 OK
+INFO:     10.20.26.157:13750 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE1NzQ5LCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDIxNDksImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.VQmNDSbp1n-C33fwK7U0S_quL83cO81zFwY1h_NJ7d29GbnUi5wa57-3U8l5VrWtnFKPCntuVDqISFKoKhn7CQ HTTP/1.1" 200 OK
+INFO:     10.20.37.114:12132 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE2MDEyLCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDI0MTIsImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.vX8XPUe4eJlfYL4nkI6rQO7MSNukbWz72UiOebrBawt66YPo3Y6_OAfSFGyDavZeSyEqWNGyZmVd4tj3TOmsAA HTTP/1.1" 200 OK
+INFO:     10.20.26.157:59345 - "GET /?__sign=eyJhbGciOiJFZERTQSJ9.eyJyZWFkIjp0cnVlLCJwZXJtaXNzaW9ucyI6eyJyZXBvLmNvbnRlbnQucmVhZCI6dHJ1ZX0sIm9uQmVoYWxmT2YiOnsia2luZCI6InVzZXIiLCJfaWQiOiI2NmVkYjFlNDZjNTMwYzFhZGJlNjc4NGUiLCJ1c2VyIjoiQWxpYnJvd24iLCJzZXNzaW9uSWQiOiI2ODU4MzZhOWY5ZGM1OTkwNzYzYTdiODgifSwiaWF0IjoxNzczOTE2MDEyLCJzdWIiOiIvc3BhY2VzL2NvZGV5LWxhYi9TbW9sTE0yLWN1c3RvbXMiLCJleHAiOjE3NzQwMDI0MTIsImlzcyI6Imh0dHBzOi8vaHVnZ2luZ2ZhY2UuY28ifQ.vX8XPUe4eJlfYL4nkI6rQO7MSNukbWz72UiOebrBawt66YPo3Y6_OAfSFGyDavZeSyEqWNGyZmVd4tj3TOmsAA HTTP/1.1" 200 OK
+2026-03-19 10:27:28,588 [INFO] main: ADI | decision: HIGH_PRIORITY | score: -90.0
+2026-03-19 10:27:34,319 [INFO] main: SmolLM2 response ok | decision: HIGH_PRIORITY
+Uploading the dataset shards:   0%|          | 0/1 [00:00<?, ?it/s]
+Creating parquet from Arrow format:   0%|          | 0/1 [00:00<?, ?ba/s]
+Creating parquet from Arrow format: 100%|██████████| 1/1 [00:00<00:00, 1480.52ba/s]
+Uploading the dataset shards: 100%|██████████| 1/1 [00:00<00:00,  2.83it/s]
+Uploading the dataset shards: 100%|██████████| 1/1 [00:00<00:00,  2.83it/s]
+2026-03-19 10:27:36,115 [INFO] model: Dataset updated — total entries: 140
+INFO:     10.16.31.44:17893 - "POST /v1/chat/completions HTTP/1.1" 200 OK
