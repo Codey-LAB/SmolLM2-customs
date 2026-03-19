@@ -1,0 +1,38 @@
+# Changelog — SmolLM2 Customs
+
+---
+
+## [1.1.0] — 2026-03-19
+
+### Security (main.py)
+- **Timing-safe auth**: replaced naive string comparison with `hmac.compare_digest` + SHA256 — prevents timing attacks
+- **Rate limiting**: in-process sliding window, 20 req/min (chat), 5 req/min (train), tracked per IP
+- **Train endpoint hardened**:
+  - Now requires `SMOLLM_API_KEY` to be set — no more silent open-access bypass in dev mode
+  - Concurrency guard `_train_lock` prevents parallel training runs
+  - `subprocess.Popen` with `close_fds=True` + `start_new_session=True` for clean process isolation
+- **Root `/`**: no longer exposes internal details (removed `device_info`, model name)
+- **503 response**: `adi_decision` stays in the response body — intentional, required by hub fallback chain; now documented as such
+
+### Bugfix (main.py)
+- **Fixed ArrowTypeError on dataset push**
+  - `adi_metrics` was passed as a `dict` to `push_log()`
+  - Arrow/Parquet schema (inferred from existing 139 entries) expected a `string`
+  - Fix: `json.dumps(adi_result["metrics"])` before push — applied to both SUCCESS and REJECT paths
+  - Symptom: `Dataset push failed: ArrowTypeError: Expected bytes, got a 'dict' object`
+  - Root cause: developer tinkered too much across two days, lost track of one line — had to call in an AI to find it 🙃
+
+### Confirmed working
+- Dataset logging restored: `Dataset updated — total entries: 140` ✓
+- Training pipeline via GitHub Actions: export → validate → finetune ✓
+- Auth, ADI filtering, fallback chain: all stable ✓
+
+---
+
+## [1.0.0] — 2026-03-18
+
+- Initial release
+- FastAPI OpenAI-compatible endpoint
+- ADI input/output filtering
+- HF dataset logging
+- GitHub Actions training pipeline
