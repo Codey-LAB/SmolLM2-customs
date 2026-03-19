@@ -267,12 +267,13 @@ async def chat_completions(
             "Your request needs more detail before I can help. "
             "Suggestions: " + " | ".join(adi_result["recommendations"])
         )
+        import json as _json
         model_module.push_log({
             "prompt":        user_prompt,
             "system_prompt": system_prompt,
             "adi_score":     adi_result["adi"],
             "adi_decision":  decision,
-            "adi_metrics":   adi_result["metrics"],
+            "adi_metrics":   _json.dumps(adi_result["metrics"]),  # Arrow needs string, not dict
             "response":      None,
             "routed_to":     "REJECT",
             "model":         req.model,
@@ -304,11 +305,12 @@ async def chat_completions(
         )
 
     # ── Log to Dataset ────────────────────────────────────────────────────────
+    import json as _json
     model_module.push_log({
         "prompt":        user_prompt,
         "system_prompt": system_prompt,
         "adi_score":     adi_result["adi"],
-        "adi_metrics":   adi_result["metrics"],
+        "adi_metrics":   _json.dumps(adi_result["metrics"]),   # Arrow needs string, not dict
         "adi_decision":  decision,
         "response":      response_text,
         "routed_to":     routed_to,
