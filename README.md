@@ -10,6 +10,7 @@ short_description: Showcase — Build your own free LLM service and plug it into
 ---
 
 # SmolLM2 Customs — Build Your Own LLM Service
+##### v.1.1.0 maybe stable 😄
 
 > A showcase: how to build a free, private, OpenAI-compatible LLM service on HuggingFace Spaces and plug it into any hub or application — no GPU, no money, no drama.
 
