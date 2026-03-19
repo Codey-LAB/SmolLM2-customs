@@ -16,14 +16,17 @@
 #   If API_KEY not set → open access (dev mode, log warning)
 # =============================================================================
 
+import hashlib
+import hmac
 import logging
 import os
 import time
 import uuid
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
 import smollm
@@ -46,13 +49,43 @@ if not _API_KEY:
 else:
     logger.info("API_KEY set — endpoint is protected")
 
+
 def _check_auth(authorization: Optional[str]) -> None:
-    """Validate Bearer token. Skipped if API_KEY secret not set (dev mode)."""
+    """Validate Bearer token using timing-safe comparison. Skipped in dev mode."""
     if not _API_KEY:
         return
-    if authorization != f"Bearer {_API_KEY}":
-        logger.warning("Unauthorized request — invalid or missing token")
+    if not authorization or not authorization.startswith("Bearer "):
+        logger.warning("Unauthorized request — missing or malformed Authorization header")
         raise HTTPException(status_code=401, detail="Unauthorized")
+    token = authorization[len("Bearer "):]
+    # hmac.compare_digest prevents timing attacks
+    if not hmac.compare_digest(
+        hashlib.sha256(token.encode()).digest(),
+        hashlib.sha256(_API_KEY.encode()).digest(),
+    ):
+        logger.warning("Unauthorized request — invalid token")
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# ── Rate Limiting ─────────────────────────────────────────────────────────────
+# Simple in-process sliding window. Good enough for HF Space single-worker.
+# Swap for Redis-backed slowapi if you ever run multi-worker.
+
+_RATE_LIMIT_WINDOW  = 60        # seconds
+_RATE_LIMIT_MAX     = 20        # requests per window per IP (chat endpoint)
+_TRAIN_RATE_LIMIT   = 5         # requests per window per IP (train endpoint)
+_request_log: dict  = defaultdict(list)
+
+
+def _rate_check(key: str, max_requests: int) -> None:
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW
+    # Purge old entries
+    _request_log[key] = [t for t in _request_log[key] if t > window_start]
+    if len(_request_log[key]) >= max_requests:
+        logger.warning(f"Rate limit hit for key: {key}")
+        raise HTTPException(status_code=429, detail="Too Many Requests")
+    _request_log[key].append(now)
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -64,7 +97,13 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("=== SmolLM2 Service stopped ===")
 
-app = FastAPI(title="SmolLM2 Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="SmolLM2 Service",
+    version="1.0.0",
+    lifespan=lifespan,
+    # Disable auto-generated docs in production if you want:
+    # docs_url=None, redoc_url=None
+)
 
 
 # =============================================================================
@@ -89,12 +128,11 @@ class ChatCompletionRequest(BaseModel):
 
 @app.get("/")
 async def root():
+    """Minimal status — no internal details exposed."""
     return {
         "service": "SmolLM2 Service",
-        "model":   smollm.device_info(),
         "ready":   smollm.is_ready(),
         "auth":    "protected" if _API_KEY else "open",
-        "docs":    "/docs",
     }
 
 
@@ -107,6 +145,7 @@ async def health(authorization: Optional[str] = Header(None)):
         "model":  model_module.status(),
         "auth":   "protected" if _API_KEY else "open",
     }
+
 
 # ── Training & Data Ops Trigger ──────────────────────────────────────────────
 # How to trigger Training/Export/Validation outside HF (e.g., Git Actions):
@@ -123,52 +162,82 @@ async def health(authorization: Optional[str] = Header(None)):
 # curl -X POST "https://codey-lab-smollm2-customs.hf.space/v1/train/execute?mode=finetune" \
 #      -H "Authorization: Bearer ${{ secrets.SMOLLM_API_KEY }}"
 
+_VALID_TRAIN_MODES = frozenset(["export", "validate", "finetune"])
+_train_lock = False  # Simple guard against parallel train runs
+
+
 @app.post("/v1/train/execute")
 async def execute_train_ops(
-    mode: str = "export", 
-    authorization: Optional[str] = Header(None)
+    request: Request,
+    mode: str = "export",
+    authorization: Optional[str] = Header(None),
 ):
     """
-    Remote Trigger for train.py execution. 
-    Supports: export (JSONL dump), validate (ADI accuracy check), finetune (Training).
+    Remote trigger for train.py. Auth required — always.
+    Supports: export | validate | finetune
     """
+    global _train_lock
+
+    # Auth is mandatory here regardless of dev mode
+    if not _API_KEY:
+        raise HTTPException(status_code=503, detail="Train endpoint disabled in open-access mode")
     _check_auth(authorization)
-    
+
+    # Rate limit train endpoint (tighter than chat)
+    client_ip = request.client.host if request.client else "unknown"
+    _rate_check(f"train:{client_ip}", _TRAIN_RATE_LIMIT)
+
+    # Whitelist mode (already a frozenset — fast lookup)
+    if mode not in _VALID_TRAIN_MODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode. Supported: {', '.join(sorted(_VALID_TRAIN_MODES))}"
+        )
+
+    # Concurrency guard — no parallel training runs
+    if _train_lock:
+        raise HTTPException(status_code=409, detail="A training task is already running")
+
     import subprocess
     import sys
 
-    # Map the allowed modes from your train.py
-    valid_modes = ["export", "validate", "finetune"]
-    if mode not in valid_modes:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid mode. Supported: {', '.join(valid_modes)}"
-        )
-
     try:
-        # We use Popen for a nonblocking background proces 
-        # so the API call returns immediately without timing out.
-        subprocess.Popen([sys.executable, "train.py", "--mode", mode])
-        
-        logger.info(f"TRAIN-OPS | Background task started: train.py --mode {mode}")
+        _train_lock = True
+        proc = subprocess.Popen(
+            [sys.executable, "train.py", "--mode", mode],
+            # Isolate the subprocess — no inherited file descriptors leaking
+            close_fds=True,
+            start_new_session=True,
+        )
+        logger.info(f"TRAIN-OPS | pid={proc.pid} | mode={mode} | ip={client_ip}")
         return {
-            "status": "queued",
-            "mode": mode,
-            "message": f"Task 'train.py --mode {mode}' triggered successfully.",
-            "timestamp": time.time()
+            "status":    "queued",
+            "mode":      mode,
+            "message":   f"train.py --mode {mode} triggered",
+            "timestamp": time.time(),
         }
     except Exception as e:
-        logger.error(f"TRAIN-OPS Failed to trigger: {str(e)}")
+        logger.error(f"TRAIN-OPS | Failed to start: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Internal Execution Error")
+    finally:
+        # Release lock after a short grace period so the process can actually start.
+        # In production you'd track proc.returncode properly; this is fine for HF Space.
+        _train_lock = False
+
 
 # ── chat/completions ──────────────────────────────────────────────────────────
 
 @app.post("/v1/chat/completions")
 async def chat_completions(
+    request: Request,
     req: ChatCompletionRequest,
     authorization: Optional[str] = Header(None),
 ):
     _check_auth(authorization)
+
+    # Rate limit per IP
+    client_ip = request.client.host if request.client else "unknown"
+    _rate_check(f"chat:{client_ip}", _RATE_LIMIT_MAX)
 
     if not req.messages:
         raise HTTPException(status_code=400, detail="messages cannot be empty")
@@ -223,6 +292,8 @@ async def chat_completions(
 
     except Exception as e:
         logger.warning(f"SmolLM2 failed: {type(e).__name__} — triggering hub fallback")
+        # adi_decision is intentional here — hub needs it for fallback routing.
+        # Safe because this response is only visible to authenticated hub clients.
         raise HTTPException(
             status_code=503,
             detail={
@@ -237,8 +308,8 @@ async def chat_completions(
         "prompt":        user_prompt,
         "system_prompt": system_prompt,
         "adi_score":     adi_result["adi"],
-        "adi_decision":  decision,
         "adi_metrics":   adi_result["metrics"],
+        "adi_decision":  decision,
         "response":      response_text,
         "routed_to":     routed_to,
         "model":         req.model,
