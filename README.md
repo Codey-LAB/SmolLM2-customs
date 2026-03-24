@@ -20,7 +20,8 @@ short_description: Showcase — Build your own free LLM service and plug it into
 
 ---
 
-## What is this?
+## What is this? 
+[DEMO Space](https://huggingface.co/spaces/codey-lab/SmolLM2-ADI)
 
 A minimal but production-ready LLM service built on:
 
